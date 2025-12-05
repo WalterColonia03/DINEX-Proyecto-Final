@@ -1,0 +1,187 @@
+
+jenkins:
+  systemMessage: "Jenkins CI/CD - DINEX Tracking System"
+  numExecutors: 2
+  mode: NORMAL
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "admin123"
+          description: "Administrador principal"
+
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+  clouds:
+    - docker:
+        name: "docker"
+        dockerApi:
+          dockerHost:
+            uri: "unix:///var/run/docker.sock"
+        templates:
+          - labelString: "docker-agent"
+            dockerTemplateBase:
+              image: "jenkins/inbound-agent:latest"
+            remoteFs: "/home/jenkins"
+            connector:
+              attach:
+                user: "jenkins"
+            instanceCapStr: "2"
+            removeVolumes: true
+
+tool:
+  git:
+    installations:
+      - name: "Default"
+        home: "git"
+
+  terraform:
+    installations:
+      - name: "Terraform 1.6.0"
+        home: "/usr/local/bin"
+        properties:
+          - installSource:
+              installers:
+                - terraformInstaller:
+                    id: "1.6.0"
+
+jobs:
+  - script: |
+      pipelineJob('dinex-tracking-pipeline') {
+        description('Pipeline principal para deployment')
+
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/WalterColonia03/IaC-DINEX.git')
+                  credentials('github-credentials')
+                }
+                branch('*/main')
+              }
+            }
+            scriptPath('Jenkinsfile')
+          }
+        }
+
+        triggers {
+          githubPush()
+        }
+
+        properties {
+          buildDiscarder {
+            strategy {
+              logRotator {
+                daysToKeepStr('30')
+                numToKeepStr('10')
+              }
+            }
+          }
+        }
+      }
+
+  - script: |
+      pipelineJob('security-scan-checkov') {
+        description('Análisis de seguridad con Checkov')
+
+        definition {
+          cps {
+            script("""
+              pipeline {
+                agent { label 'docker-agent' }
+
+                stages {
+                  stage('Checkout') {
+                    steps {
+                      echo 'Obteniendo código del repositorio'
+                      checkout scm
+                    }
+                  }
+
+                  stage('Run Checkov Security Scan') {
+                    steps {
+                      echo 'Ejecutando análisis de seguridad con Checkov'
+                      sh '''
+                        cd infrastructure/security/checkov
+                        chmod +x run-checkov.sh
+                        ./run-checkov.sh
+                      '''
+                    }
+                  }
+
+                  stage('Archive Security Results') {
+                    steps {
+                      echo 'Archivando resultados del análisis'
+                      archiveArtifacts artifacts: 'infrastructure/security/results/*.xml', allowEmptyArchive: false
+                      junit 'infrastructure/security/results/*.xml'
+                    }
+                  }
+                }
+
+                post {
+                  success {
+                    echo 'Análisis de seguridad completado exitosamente'
+                  }
+                  failure {
+                    echo 'El análisis de seguridad encontró problemas críticos'
+                  }
+                }
+              }
+            """)
+          }
+        }
+      }
+
+  - script: |
+      pipelineJob('terraform-plan') {
+        description('Verificar plan de Terraform sin aplicar cambios')
+
+        definition {
+          cps {
+            script("""
+              pipeline {
+                agent any
+
+                stages {
+                  stage('Terraform Init') {
+                    steps {
+                      dir('infrastructure/terraform') {
+                        sh 'terraform init'
+                      }
+                    }
+                  }
+
+                  stage('Terraform Validate') {
+                    steps {
+                      dir('infrastructure/terraform') {
+                        sh 'terraform validate'
+                      }
+                    }
+                  }
+
+                  stage('Terraform Plan') {
+                    steps {
+                      dir('infrastructure/terraform') {
+                        sh 'terraform plan -out=tfplan'
+                      }
+                    }
+                  }
+                }
+              }
+            """)
+          }
+        }
+      }
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+    adminAddress: "admin@dinex-tracking.local"
+
+  gitHubPluginConfig:
+    hookUrl: "http://localhost:8080/github-webhook/"

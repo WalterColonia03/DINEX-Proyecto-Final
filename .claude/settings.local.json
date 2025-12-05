@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(if exist deployment.zip del deployment.zip)",
+      "Bash(powershell Compress-Archive:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(terraform init:*)",
+      "Bash(chmod:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(del \"GUIA-PRESENTACION-PROFESOR.md\" \"comandos-presentacion.ps1\" \"infrastructure\\terraform\\terraform.tfvars.example\")",
+      "Bash(rm:*)",
+      "Bash(terraform version:*)",
+      "Bash(aws --version:*)",
+      "Bash(dir:*)",
+      "Bash(aws sts get-caller-identity:*)",
+      "Bash(terraform validate:*)",
+      "Bash(terraform plan:*)",
+      "Bash(terraform apply:*)",
+      "Bash(curl:*)",
+      "Bash(terraform output:*)",
+      "Bash(git restore:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
