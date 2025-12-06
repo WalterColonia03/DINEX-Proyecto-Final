@@ -6,9 +6,9 @@ environment = "dev"
 
 # Configuración de Lambda 
 lambda_config = {
-  memory  = 256          
-  timeout = 10           
-  runtime = "python3.11" 
+  memory  = 256
+  timeout = 10
+  runtime = "python3.11"
 }
 
 # Configuración de API Gateway 
@@ -19,7 +19,7 @@ api_throttle_config = {
 
 
 cloudwatch_config = {
-  log_retention_days = 7 
-  alarm_threshold    = 5 
+  log_retention_days = 7
+  alarm_threshold    = 5
 }
 

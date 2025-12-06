@@ -19,7 +19,10 @@
       "Bash(terraform apply:*)",
       "Bash(curl:*)",
       "Bash(terraform output:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(terraform fmt:*)",
+      "Bash(docker --version:*)",
+      "Bash(bash run-checkov.sh:*)"
     ],
     "deny": [],
     "ask": []

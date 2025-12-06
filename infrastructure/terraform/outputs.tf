@@ -6,7 +6,7 @@ output "api_endpoint" {
 
 output "api_usage" {
   description = "Ejemplos de uso"
-  value = <<-EOT
+  value       = <<-EOT
 
   Ejemplos de uso:
 

@@ -22,7 +22,7 @@ pipeline {
                     sh '''
                         cd infrastructure/security/checkov
                         chmod +x run-checkov.sh
-                        ./run-checkov.sh || true
+                        ./run-checkov.sh
                     '''
                 }
             }
@@ -33,7 +33,7 @@ pipeline {
                 echo 'Validando configuración de Terraform'
                 dir('infrastructure/terraform') {
                     sh 'terraform init -backend=false'
-                    sh 'terraform fmt -check || true'
+                    sh 'terraform fmt -check'
                     sh 'terraform validate'
                 }
             }

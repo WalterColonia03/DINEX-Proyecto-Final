@@ -41,14 +41,14 @@ variable "owner_name" {
 variable "lambda_config" {
   description = "Configuración de la función Lambda"
   type = object({
-    memory    = number
-    timeout   = number
-    runtime   = string
+    memory  = number
+    timeout = number
+    runtime = string
   })
   default = {
-    memory    = 256
-    timeout   = 10
-    runtime   = "python3.11"
+    memory  = 256
+    timeout = 10
+    runtime = "python3.11"
   }
 }
 
