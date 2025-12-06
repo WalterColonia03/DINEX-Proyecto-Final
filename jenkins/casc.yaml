@@ -59,8 +59,7 @@ jobs:
             scm {
               git {
                 remote {
-                  url('https://github.com/WalterColonia03/IaC-DINEX.git')
-                  credentials('github-credentials')
+                  url('https://github.com/WalterColonia03/DINEX-Proyecto-Final.git')
                 }
                 branch('*/main')
               }
@@ -73,15 +72,9 @@ jobs:
           githubPush()
         }
 
-        properties {
-          buildDiscarder {
-            strategy {
-              logRotator {
-                daysToKeepStr('30')
-                numToKeepStr('10')
-              }
-            }
-          }
+        logRotator {
+          daysToKeep(30)
+          numToKeep(10)
         }
       }
 
