@@ -26,6 +26,70 @@ provider "aws" {
 
 data "aws_caller_identity" "current" {}
 
+# KMS Key for encryption
+resource "aws_kms_key" "cloudwatch" {
+  description             = "KMS key for CloudWatch Logs encryption"
+  deletion_window_in_days = 10
+  enable_key_rotation     = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow CloudWatch Logs"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${var.aws_region}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:CreateGrant",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+        Condition = {
+          ArnLike = {
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*"
+          }
+        }
+      },
+      {
+        Sid    = "Allow SNS"
+        Effect = "Allow"
+        Principal = {
+          Service = "sns.amazonaws.com"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${var.project}-cloudwatch-kms"
+  }
+}
+
+resource "aws_kms_alias" "cloudwatch" {
+  name          = "alias/${var.project}-cloudwatch-${var.environment}"
+  target_key_id = aws_kms_key.cloudwatch.key_id
+}
+
 # DynamoDB Table
 
 resource "aws_dynamodb_table" "tracking" {
@@ -41,6 +105,10 @@ resource "aws_dynamodb_table" "tracking" {
   ttl {
     attribute_name = "expiry"
     enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
   }
 
   server_side_encryption {
@@ -105,12 +173,36 @@ resource "aws_iam_role_policy" "lambda_policy" {
         Effect   = "Allow"
         Action   = ["sns:Publish"]
         Resource = aws_sns_topic.notifications.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:SendMessage"
+        ]
+        Resource = aws_sqs_queue.lambda_dlq.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords"
+        ]
+        Resource = "*"
       }
     ]
   })
 }
 
 # Lambda Function
+
+resource "aws_sqs_queue" "lambda_dlq" {
+  name                      = "${var.project}-lambda-dlq-${var.environment}"
+  message_retention_seconds = 1209600 # 14 days
+
+  tags = {
+    Name = "${var.project}-lambda-dlq"
+  }
+}
 
 resource "aws_lambda_function" "tracking" {
   filename         = "${path.module}/../../application/lambda/tracking/deployment.zip"
@@ -121,6 +213,7 @@ resource "aws_lambda_function" "tracking" {
   source_code_hash = filebase64sha256("${path.module}/../../application/lambda/tracking/deployment.zip")
   timeout          = var.lambda_config.timeout
   memory_size      = var.lambda_config.memory
+  kms_key_arn      = aws_kms_key.cloudwatch.arn
 
   environment {
     variables = {
@@ -128,6 +221,14 @@ resource "aws_lambda_function" "tracking" {
       ENVIRONMENT = var.environment
       SNS_TOPIC   = aws_sns_topic.notifications.arn
     }
+  }
+
+  dead_letter_config {
+    target_arn = aws_sqs_queue.lambda_dlq.arn
+  }
+
+  tracing_config {
+    mode = "Active"
   }
 
   tags = {
@@ -142,7 +243,8 @@ resource "aws_lambda_function" "tracking" {
 
 resource "aws_cloudwatch_log_group" "tracking" {
   name              = "/aws/lambda/${var.project}-tracking-${var.environment}"
-  retention_in_days = var.cloudwatch_config.log_retention_days
+  retention_in_days = 365
+  kms_key_id        = aws_kms_key.cloudwatch.arn
 
   tags = {
     Name = "${var.project}-tracking-logs"
@@ -198,7 +300,8 @@ resource "aws_apigatewayv2_stage" "api" {
 
 resource "aws_cloudwatch_log_group" "api_gateway" {
   name              = "/aws/apigateway/${var.project}-${var.environment}"
-  retention_in_days = var.cloudwatch_config.log_retention_days
+  retention_in_days = 365
+  kms_key_id        = aws_kms_key.cloudwatch.arn
 
   tags = {
     Name = "${var.project}-api-gateway-logs"
@@ -215,23 +318,28 @@ resource "aws_apigatewayv2_integration" "tracking" {
 }
 
 # API Routes
+# NOTE: authorization_type = "NONE" es adecuado para MVP/demo
+# En producción, usar "JWT" o "AWS_IAM"
 
 resource "aws_apigatewayv2_route" "get_tracking" {
-  api_id    = aws_apigatewayv2_api.api.id
-  route_key = "GET /tracking"
-  target    = "integrations/${aws_apigatewayv2_integration.tracking.id}"
+  api_id             = aws_apigatewayv2_api.api.id
+  route_key          = "GET /tracking"
+  target             = "integrations/${aws_apigatewayv2_integration.tracking.id}"
+  authorization_type = "NONE"
 }
 
 resource "aws_apigatewayv2_route" "post_tracking" {
-  api_id    = aws_apigatewayv2_api.api.id
-  route_key = "POST /tracking"
-  target    = "integrations/${aws_apigatewayv2_integration.tracking.id}"
+  api_id             = aws_apigatewayv2_api.api.id
+  route_key          = "POST /tracking"
+  target             = "integrations/${aws_apigatewayv2_integration.tracking.id}"
+  authorization_type = "NONE"
 }
 
 resource "aws_apigatewayv2_route" "health" {
-  api_id    = aws_apigatewayv2_api.api.id
-  route_key = "GET /health"
-  target    = "integrations/${aws_apigatewayv2_integration.tracking.id}"
+  api_id             = aws_apigatewayv2_api.api.id
+  route_key          = "GET /health"
+  target             = "integrations/${aws_apigatewayv2_integration.tracking.id}"
+  authorization_type = "NONE"
 }
 
 resource "aws_lambda_permission" "api_gateway_tracking" {
@@ -245,8 +353,9 @@ resource "aws_lambda_permission" "api_gateway_tracking" {
 # SNS Topic
 
 resource "aws_sns_topic" "notifications" {
-  name         = "${var.project}-notifications-${var.environment}"
-  display_name = "DINEX Tracking Notifications"
+  name              = "${var.project}-notifications-${var.environment}"
+  display_name      = "DINEX Tracking Notifications"
+  kms_master_key_id = aws_kms_key.cloudwatch.id
 
   tags = {
     Name = "${var.project}-notifications-topic"

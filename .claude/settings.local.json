@@ -22,7 +22,9 @@
       "Bash(git restore:*)",
       "Bash(terraform fmt:*)",
       "Bash(docker --version:*)",
-      "Bash(bash run-checkov.sh:*)"
+      "Bash(bash run-checkov.sh:*)",
+      "Bash(docker run:*)",
+      "Bash(powershell:*)"
     ],
     "deny": [],
     "ask": []
